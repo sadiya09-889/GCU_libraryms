@@ -1,41 +1,52 @@
 import { useState, useEffect } from "react"
-import { useLibrary } from "../context/LibraryContext"
-import { supabase } from "../lib/supabase"
+import supabase from "../lib/supabase"
 
 function Books() {
-
-    useEffect(() => {
-        const testConnection = async () => {
-            const { data, error } = await supabase.from("books").select("*")
-            console.log("Books from DB:", data)
-            console.log("Error:", error)
-        }
-
-        testConnection()
-    }, [])
-
-    const { books, setBooks } = useLibrary()
-
+    const [books, setBooks] = useState([])
     const [newTitle, setNewTitle] = useState("")
     const [newAuthor, setNewAuthor] = useState("")
     const [editingId, setEditingId] = useState(null)
 
-    const addBook = () => {
-        if (!newTitle || !newAuthor) return
-
-        const newBook = {
-            id: Date.now(),
-            title: newTitle,
-            author: newAuthor
+    // 📌 Fetch all books from Supabase on mount
+    const fetchBooks = async () => {
+        const { data, error } = await supabase.from("books").select("*")
+        if (error) {
+            console.error("Error fetching books:", error)
+        } else {
+            setBooks(data)
         }
-
-        setBooks([...books, newBook])
-        setNewTitle("")
-        setNewAuthor("")
     }
 
-    const deleteBook = (id) => {
-        setBooks(books.filter(book => book.id !== id))
+    useEffect(() => {
+        fetchBooks()
+    }, [])
+
+    // 📌 Add a new book to Supabase
+    const addBook = async () => {
+        if (!newTitle || !newAuthor) return
+
+        const { error } = await supabase.from("books").insert([
+            { title: newTitle, author: newAuthor }
+        ])
+
+        if (error) {
+            console.error("Error adding book:", error)
+        } else {
+            setNewTitle("")
+            setNewAuthor("")
+            fetchBooks() // Re-fetch to get the latest data
+        }
+    }
+
+    // 📌 Delete a book from Supabase
+    const deleteBook = async (id) => {
+        const { error } = await supabase.from("books").delete().eq("id", id)
+
+        if (error) {
+            console.error("Error deleting book:", error)
+        } else {
+            fetchBooks()
+        }
     }
 
     const startEdit = (book) => {
@@ -44,18 +55,21 @@ function Books() {
         setNewAuthor(book.author)
     }
 
-    const updateBook = () => {
-        setBooks(
-            books.map(book =>
-                book.id === editingId
-                    ? { ...book, title: newTitle, author: newAuthor }
-                    : book
-            )
-        )
+    // 📌 Update a book in Supabase
+    const updateBook = async () => {
+        const { error } = await supabase
+            .from("books")
+            .update({ title: newTitle, author: newAuthor })
+            .eq("id", editingId)
 
-        setEditingId(null)
-        setNewTitle("")
-        setNewAuthor("")
+        if (error) {
+            console.error("Error updating book:", error)
+        } else {
+            setEditingId(null)
+            setNewTitle("")
+            setNewAuthor("")
+            fetchBooks()
+        }
     }
 
     return (

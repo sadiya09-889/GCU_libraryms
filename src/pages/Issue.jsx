@@ -1,181 +1,181 @@
-import { useState } from "react"
-import { useLibrary } from "../context/LibraryContext"
+import { useEffect, useState } from "react"
+import supabase from "../lib/supabase"
 
 function Issue() {
-    const { books, issuedBooks, setIssuedBooks } = useLibrary()
-
-    const [selectedBook, setSelectedBook] = useState("")
+    const [books, setBooks] = useState([])
+    const [issuedBooks, setIssuedBooks] = useState([])
+    const [selectedBookId, setSelectedBookId] = useState("")
     const [studentName, setStudentName] = useState("")
-    const [returnDate, setReturnDate] = useState("")
 
-    const handleIssue = () => {
-        if (!selectedBook || !studentName.trim()) return
+    // 📌 Fetch books for dropdown
+    const fetchBooks = async () => {
+        const { data, error } = await supabase.from("books").select("*")
+        if (!error) setBooks(data)
+    }
 
-        const newEntry = {
-            id: Date.now(),
-            bookTitle: selectedBook,
-            studentName: studentName.trim(),
-            issueDate: new Date().toISOString().split("T")[0],
-            returnDate: returnDate || null,
-            status: "Issued"
+    // 📌 Fetch issued books
+    const fetchIssuedBooks = async () => {
+        const { data, error } = await supabase
+            .from("issued_books")
+            .select("*")
+
+        if (!error) setIssuedBooks(data)
+    }
+
+    useEffect(() => {
+        fetchBooks()
+        fetchIssuedBooks()
+    }, [])
+
+    // 📌 Issue book
+    const issueBook = async () => {
+        if (!selectedBookId || !studentName) return
+
+        const dueDate = new Date()
+        dueDate.setDate(dueDate.getDate() + 7)
+
+        const { error } = await supabase.from("issued_books").insert([
+            {
+                book_id: selectedBookId,
+                student_name: studentName,
+                due_date: dueDate
+            }
+        ])
+
+        if (!error) {
+            setStudentName("")
+            setSelectedBookId("")
+            fetchIssuedBooks()
+        }
+    }
+
+    // 📌 Return book + fine calculation
+    const returnBook = async (issue) => {
+        const today = new Date()
+        const due = new Date(issue.due_date)
+
+        let fine = 0
+
+        if (today > due) {
+            const diffTime = today - due
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+            fine = diffDays * 10 // ₹10 per day
         }
 
-        setIssuedBooks([newEntry, ...issuedBooks])
-        setSelectedBook("")
-        setStudentName("")
-        setReturnDate("")
-    }
+        await supabase
+            .from("issued_books")
+            .update({ returned: true, fine: fine })
+            .eq("id", issue.id)
 
-    const handleReturn = (id) => {
-        setIssuedBooks(
-            issuedBooks.map(book =>
-                book.id === id
-                    ? { ...book, status: "Returned", returnDate: book.returnDate || new Date().toISOString().split("T")[0] }
-                    : book
-            )
-        )
+        fetchIssuedBooks()
     }
-
-    const issuedCount = issuedBooks.filter(b => b.status === "Issued").length
-    const returnedCount = issuedBooks.filter(b => b.status === "Returned").length
 
     return (
         <div>
-            <div className="page-header">
-                <h2>Issue Book System</h2>
-                <p>Issue and manage book transactions</p>
-            </div>
-
-            {/* Stats */}
-            <div className="stats-row">
-                <div className="mini-stat" style={{ background: "var(--light-orange)", borderColor: "var(--primary-orange)" }}>
-                    <div className="mini-stat-value" style={{ color: "var(--primary-orange)" }}>{issuedCount}</div>
-                    <div className="mini-stat-label">Currently Issued</div>
-                </div>
-                <div className="mini-stat" style={{ background: "var(--green-50)", borderColor: "var(--green-500)" }}>
-                    <div className="mini-stat-value" style={{ color: "var(--green-500)" }}>{returnedCount}</div>
-                    <div className="mini-stat-label">Returned</div>
-                </div>
-                <div className="mini-stat" style={{ background: "var(--gray-50)", borderColor: "var(--gray-300)" }}>
-                    <div className="mini-stat-value" style={{ color: "var(--gray-700)" }}>{issuedBooks.length}</div>
-                    <div className="mini-stat-label">Total Records</div>
-                </div>
-            </div>
+            <h2 style={{ color: "var(--primary-red)" }}>Issue Book System</h2>
 
             {/* Issue Form */}
-            <div className="form-card">
-                <div className="form-title">📤 Issue a New Book</div>
+            <div
+                style={{
+                    background: "white",
+                    padding: "20px",
+                    borderRadius: "8px",
+                    marginBottom: "20px"
+                }}
+            >
+                <select
+                    value={selectedBookId}
+                    onChange={(e) => setSelectedBookId(e.target.value)}
+                    style={{ marginRight: "10px", padding: "6px" }}
+                >
+                    <option value="">Select Book</option>
+                    {books.map((book) => (
+                        <option key={book.id} value={book.id}>
+                            {book.title}
+                        </option>
+                    ))}
+                </select>
 
-                <div className="form-row">
-                    <div className="form-group">
-                        <label className="form-label">Book Title</label>
-                        <select
-                            className="form-select"
-                            value={selectedBook}
-                            onChange={(e) => setSelectedBook(e.target.value)}
-                        >
-                            <option value="">-- Select a Book --</option>
-                            {books.map(book => (
-                                <option key={book.id} value={book.title}>
-                                    {book.title} — {book.author}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                <input
+                    type="text"
+                    placeholder="Student Name"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    style={{ marginRight: "10px", padding: "6px" }}
+                />
 
-                    <div className="form-group">
-                        <label className="form-label">Student Name</label>
-                        <input
-                            type="text"
-                            className="form-input"
-                            placeholder="Enter student name"
-                            value={studentName}
-                            onChange={(e) => setStudentName(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleIssue()}
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label className="form-label">Return Date</label>
-                        <input
-                            type="date"
-                            className="form-input"
-                            value={returnDate}
-                            onChange={(e) => setReturnDate(e.target.value)}
-                        />
-                    </div>
-
-                    <button
-                        className="btn btn-primary"
-                        onClick={handleIssue}
-                        disabled={!selectedBook || !studentName.trim()}
-                    >
-                        📤 Issue Book
-                    </button>
-                </div>
+                <button
+                    onClick={issueBook}
+                    style={{
+                        background: "var(--primary-red)",
+                        color: "white",
+                        border: "none",
+                        padding: "6px 12px",
+                        cursor: "pointer"
+                    }}
+                >
+                    Issue Book
+                </button>
             </div>
 
             {/* Issued Books Table */}
-            <div className="table-wrapper">
-                <div className="table-header">
-                    <h4>📋 Issued Books Record</h4>
-                    <span className="badge-count">
-                        {issuedBooks.length} record{issuedBooks.length !== 1 ? "s" : ""}
-                    </span>
-                </div>
+            <table
+                style={{
+                    width: "100%",
+                    background: "white",
+                    borderCollapse: "collapse"
+                }}
+            >
+                <thead
+                    style={{
+                        background: "var(--primary-orange)",
+                        color: "white"
+                    }}
+                >
+                    <tr>
+                        <th>Book ID</th>
+                        <th>Student</th>
+                        <th>Due Date</th>
+                        <th>Status</th>
+                        <th>Fine</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
 
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Book Title</th>
-                            <th>Student Name</th>
-                            <th>Issue Date</th>
-                            <th>Return Date</th>
-                            <th style={{ textAlign: "center" }}>Status</th>
-                            <th style={{ textAlign: "center" }}>Action</th>
+                <tbody>
+                    {issuedBooks.map((issue) => (
+                        <tr key={issue.id}>
+                            <td>{issue.book_id}</td>
+                            <td>{issue.student_name}</td>
+                            <td>{issue.due_date}</td>
+                            <td>
+                                {issue.returned ? (
+                                    <span style={{ color: "green" }}>Returned</span>
+                                ) : (
+                                    <span style={{ color: "red" }}>Issued</span>
+                                )}
+                            </td>
+                            <td>₹{issue.fine}</td>
+                            <td>
+                                {!issue.returned && (
+                                    <button
+                                        onClick={() => returnBook(issue)}
+                                        style={{
+                                            background: "var(--primary-orange)",
+                                            color: "white",
+                                            border: "none",
+                                            padding: "5px 8px",
+                                            cursor: "pointer"
+                                        }}
+                                    >
+                                        Return
+                                    </button>
+                                )}
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        {issuedBooks.map((entry) => (
-                            <tr key={entry.id}>
-                                <td className="td-primary">{entry.bookTitle}</td>
-                                <td>{entry.studentName}</td>
-                                <td>{entry.issueDate}</td>
-                                <td style={{ color: entry.returnDate ? "var(--green-600)" : "var(--gray-400)" }}>
-                                    {entry.returnDate || "—"}
-                                </td>
-                                <td style={{ textAlign: "center" }}>
-                                    <span className={`badge ${entry.status === "Issued" ? "badge-issued" : "badge-returned"}`}>
-                                        {entry.status}
-                                    </span>
-                                </td>
-                                <td style={{ textAlign: "center" }}>
-                                    {entry.status === "Issued" ? (
-                                        <button
-                                            className="btn btn-danger btn-sm"
-                                            onClick={() => handleReturn(entry.id)}
-                                        >
-                                            Return
-                                        </button>
-                                    ) : (
-                                        <span className="text-muted">—</span>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                        {issuedBooks.length === 0 && (
-                            <tr>
-                                <td colSpan="6">
-                                    <div className="empty-state">
-                                        <div className="empty-icon">📤</div>
-                                        <p>No issued books yet.</p>
-                                    </div>
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    ))}
+                </tbody>
+            </table>
         </div>
     )
 }

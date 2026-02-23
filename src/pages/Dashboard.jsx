@@ -1,11 +1,24 @@
-import { useLibrary } from "../context/LibraryContext"
+import { useState, useEffect } from "react"
+import supabase from "../lib/supabase"
 
 function Dashboard() {
-    const { books, issuedBooks } = useLibrary()
+    const [books, setBooks] = useState([])
+    const [issuedBooks, setIssuedBooks] = useState([])
+
+    useEffect(() => {
+        const fetchData = async () => {
+            const { data: booksData } = await supabase.from("books").select("*")
+            if (booksData) setBooks(booksData)
+
+            const { data: issuedData } = await supabase.from("issued_books").select("*")
+            if (issuedData) setIssuedBooks(issuedData)
+        }
+        fetchData()
+    }, [])
 
     const totalBooks = books.length
-    const totalIssued = issuedBooks.filter(b => b.status === "Issued").length
-    const totalReturned = issuedBooks.filter(b => b.status === "Returned").length
+    const totalIssued = issuedBooks.filter(b => !b.returned).length
+    const totalReturned = issuedBooks.filter(b => b.returned).length
 
     const cards = [
         {
@@ -90,12 +103,12 @@ function Dashboard() {
                         <tbody>
                             {recentIssued.map((entry) => (
                                 <tr key={entry.id}>
-                                    <td className="td-primary">{entry.bookTitle}</td>
-                                    <td>{entry.studentName}</td>
-                                    <td>{entry.issueDate}</td>
+                                    <td className="td-primary">Book #{entry.book_id}</td>
+                                    <td>{entry.student_name}</td>
+                                    <td>{entry.due_date}</td>
                                     <td style={{ textAlign: "center" }}>
-                                        <span className={`badge ${entry.status === "Issued" ? "badge-issued" : "badge-returned"}`}>
-                                            {entry.status}
+                                        <span className={`badge ${!entry.returned ? "badge-issued" : "badge-returned"}`}>
+                                            {entry.returned ? "Returned" : "Issued"}
                                         </span>
                                     </td>
                                 </tr>
